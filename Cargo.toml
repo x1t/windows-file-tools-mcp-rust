@@ -1,0 +1,55 @@
+[package]
+name = "file-bash-tools-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Enterprise-grade File and Bash Tools MCP Server"
+authors = ["XCT CC"]
+license = "MIT"
+
+[dependencies]
+# RMCP SDK from workspace
+rmcp = { path = "../rust-sdk/crates/rmcp", features = [
+    "server", 
+    "macros", 
+    "transport-io"
+] }
+
+# Async Runtime
+tokio = { version = "1.42", features = [
+    "macros",
+    "rt",
+    "rt-multi-thread", 
+    "io-std",
+    "fs",
+    "process"
+] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "1.0"
+
+# Error Handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# File System
+walkdir = "2.5"
+ignore = "0.4"
+
+# Regular Expressions  
+regex = "1.11"
+
+# Base64 Encoding
+base64 = "0.22"
+
+# Process Management
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "std", 
+    "fmt"
+] }

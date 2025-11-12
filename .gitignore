@@ -1,0 +1,50 @@
+# 编译输出
+/target/
+**/*.rs.bk
+
+# Cargo.lock（对于可执行项目）
+# 注意：如果这是库项目，请删除此行
+Cargo.lock
+
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+*.log
+logs/
+
+# 测试覆盖率报告
+coverage/
+*.profraw
+*.lcov
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# Rust 相关
+Cargo.lock.backup
+
+# 自定义构建输出
+build/
+dist/
+out/
+
+# 调试文件
+*.pdb
+
+# 可选：本地开发配置文件
+.config/
+.local/
