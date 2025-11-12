@@ -14,7 +14,7 @@ use rmcp::{
 };
 use std::path::Path;
 use anyhow::Result;
-use tracing::{debug, info, error};
+use tracing::{debug, info};
 
 // 重新导出主服务
 pub use FileBashToolsService as FileBashToolsServer;
@@ -54,19 +54,7 @@ pub struct EditRequest {
     pub replace_all: bool,
 }
 
-/// Bash工具请求
-#[derive(Debug, serde::Deserialize, JsonSchema)]
-pub struct BashRequest {
-    /// 要执行的命令
-    pub command: String,
-    /// 可选的超时时间(毫秒)
-    pub timeout: Option<u64>,
-    /// 清晰简洁的描述
-    pub description: Option<String>,
-    /// 设置为 true 以在后台运行
-    #[serde(default)]
-    pub run_in_background: bool,
-}
+
 
 fn default_offset() -> Option<i32> {
     Some(1)
@@ -123,8 +111,11 @@ impl FileBashToolsService {
 
 #[tool_router]
 impl FileBashToolsService {
-    /// 写入文件内容
-    #[tool(description = "Write content to a file")]
+    /// 写入文件内容 (Only Windows)
+    #[tool(
+        name = "write_file",
+        description = "Write content to a file. Only Windows. Use double backslashes for paths like \"C:\\\\DumpStack.log\""
+    )]
     async fn write(
         &self,
         Parameters(req): Parameters<WriteRequest>,
@@ -149,8 +140,11 @@ impl FileBashToolsService {
         ]))
     }
 
-    /// 读取文件内容
-    #[tool(description = "Read content from a file")]
+    /// 读取文件内容 (Only Windows)
+    #[tool(
+        name = "read_file", 
+        description = "Read content from a file. Only Windows. Use double backslashes for paths like \"C:\\\\DumpStack.log\""
+    )]
     async fn read(
         &self,
         Parameters(req): Parameters<ReadRequest>,
@@ -200,8 +194,11 @@ impl FileBashToolsService {
         ]))
     }
 
-    /// 编辑文件内容
-    #[tool(description = "Edit file content by replacing text")]
+    /// 编辑文件内容 (Only Windows)
+    #[tool(
+        name = "edit_file",
+        description = "Edit file content by replacing text. Only Windows. Use double backslashes for paths like \"C:\\\\DumpStack.log\""
+    )]
     async fn edit(
         &self,
         Parameters(req): Parameters<EditRequest>,
@@ -253,47 +250,7 @@ impl FileBashToolsService {
         ]))
     }
 
-    /// 执行PowerShell命令
-    #[tool(description = "Execute PowerShell command")]
-    async fn bash(
-        &self,
-        Parameters(req): Parameters<BashRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        debug!("Bash工具调用: command={}", req.command);
-        
-        // 验证命令安全性
-        if req.command.is_empty() {
-            return Err(McpError::invalid_params("命令不能为空", None));
-        }
-        
-        // 构建PowerShell命令
-        let mut cmd = tokio::process::Command::new("pwsh.exe");
-        cmd.arg("-NoProfile")
-           .arg("-Command")
-           .arg(&req.command);
-        
-        // 执行命令
-        let output = cmd.output().await
-            .map_err(|e| McpError::internal_error(format!("执行PowerShell命令失败: {}", e), None))?;
-        
-        let exit_code = output.status.code().unwrap_or(-1);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let combined_output = format!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
-        
-        if exit_code == 0 {
-            info!("✅ Bash命令执行成功: exit_code={}", exit_code);
-        } else {
-            error!("⚠️ Bash命令执行失败: exit_code={}", exit_code);
-        }
-        
-        Ok(CallToolResult::success(vec![
-            Content::text(format!(
-                "命令执行完成:\n退出码: {}\n输出:\n{}", 
-                exit_code, combined_output
-            ))
-        ]))
-    }
+  
 }
 
 #[tool_handler]
@@ -305,7 +262,7 @@ impl ServerHandler for FileBashToolsService {
                 .enable_tools()
                 .build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some("企业级文件和Shell工具MCP服务器。支持文件读写、编辑和PowerShell命令执行。".to_string()),
+            instructions: Some("企业级文件操作MCP服务器。支持文件读写、编辑 (Only Windows)。".to_string()),
         }
     }
 }
