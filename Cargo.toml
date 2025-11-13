@@ -8,20 +8,20 @@ license = "MIT"
 
 [dependencies]
 # RMCP SDK from workspace
-rmcp = { path = "../rust-sdk/crates/rmcp", features = [
-    "server", 
-    "macros", 
-    "transport-io"
+rmcp = { path = "rust-sdk/crates/rmcp", features = [
+    "server",
+    "macros",
+    "transport-io",
 ] }
 
 # Async Runtime
 tokio = { version = "1.42", features = [
     "macros",
     "rt",
-    "rt-multi-thread", 
+    "rt-multi-thread",
     "io-std",
     "fs",
-    "process"
+    "process",
 ] }
 
 # Serialization
@@ -36,6 +36,13 @@ anyhow = "1.0"
 # File System
 walkdir = "2.5"
 ignore = "0.4"
+glob = "0.3"
+
+# Ripgrep Core Libraries (Local)
+grep = { path = "ripgrep/crates/grep" }
+grep-searcher = { path = "ripgrep/crates/searcher" }
+grep-regex = { path = "ripgrep/crates/regex" }
+grep-matcher = { path = "ripgrep/crates/matcher" }
 
 # Regular Expressions  
 regex = "1.11"
@@ -50,6 +57,6 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
-    "std", 
-    "fmt"
+    "std",
+    "fmt",
 ] }
