@@ -117,7 +117,7 @@ pub struct TodoItem {
     /** 任务状态 */
     pub status: TodoStatus,
     /** 任务描述的主动形式 */
-    pub active_form: String,
+    pub activeForm: String,
 }
 
 /// 待办事项状态
@@ -690,7 +690,7 @@ impl FileBashToolsService {
     /// TodoWrite任务管理工具 (Only Windows)
     #[tool(
         name = "TodoWrite",
-        description = "Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user. Only Windows."
+        description = "使用此工具为当前编码会话创建和管理结构化任务清单，帮助跟踪进度、整理复杂任务并向用户展示工作周密性，仅支持 Windows 系统；TodoWrite 工具必填参数结构为 {todos: [{content: 任务描述（例如：编写 Go 并发安全的工具类）, status: 任务状态（可选值：pending = 待处理 | in_progress = 进行中 | completed = 已完成）, activeForm: 正在进行的任务描述（仅 status 为 in_progress 时需填写，例如：调试 goroutine 生命周期管理逻辑）}]}"
     )]
     async fn todo_write(
         &self,
@@ -719,7 +719,7 @@ impl FileBashToolsService {
                 i + 1,
                 format!("{:?}", todo.status).to_lowercase(),
                 todo.content,
-                todo.active_form
+                todo.activeForm
             ));
         }
         
@@ -834,17 +834,17 @@ mod tests {
                 TodoItem {
                     content: "测试任务".to_string(),
                     status: TodoStatus::Pending,
-                    active_form: "测试任务".to_string(),
+                    activeForm: "测试任务".to_string(),
                 },
                 TodoItem {
                     content: "进行中的任务".to_string(),
                     status: TodoStatus::InProgress,
-                    active_form: "进行中的任务".to_string(),
+                    activeForm: "进行中的任务".to_string(),
                 },
                 TodoItem {
                     content: "完成的任务".to_string(),
                     status: TodoStatus::Completed,
-                    active_form: "完成的任务".to_string(),
+                    activeForm: "完成的任务".to_string(),
                 },
             ],
         };
@@ -857,7 +857,7 @@ mod tests {
         
         // 验证任务内容
         assert_eq!(valid_request.todos[0].content, "测试任务");
-        assert_eq!(valid_request.todos[1].active_form, "进行中的任务");
+        assert_eq!(valid_request.todos[1].activeForm, "进行中的任务");
         assert_eq!(valid_request.todos[2].content, "完成的任务");
     }
 }
