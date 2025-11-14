@@ -74,8 +74,8 @@ graph TB
 ### ⚡ 一键部署
 ```bash
 # 克隆项目
-git clone https://github.com/xctcc/file-bash-tools-rust.git
-cd file-bash-tools-rust
+git clone https://github.com/x1t/windows-file-tools-mcp-rust.git
+cd windows-file-tools-mcp-rust
 
 # 编译运行
 cargo run --release
@@ -262,10 +262,8 @@ jobs:
 - [❓ 故障排除指南](docs/troubleshooting.md)
 
 ### 💬 **技术支持**
-- 📧 **企业支持**: enterprise@company.com
-- 💬 **技术社区**: [Discord 频道](https://discord.gg/file-bash-tools)
-- 🐛 **问题反馈**: [GitHub Issues](https://github.com/xctcc/file-bash-tools-rust/issues)
-- 📱 **即时支持**: [微信群](https://weixin.com/group/file-bash-tools)
+- 📧 **企业支持**: x1t@qq.com
+- 🐛 **问题反馈**: [GitHub Issues](https://github.com/x1t/windows-file-tools-mcp-rust/issues)
 
 ---
 
@@ -292,8 +290,7 @@ jobs:
 我们欢迎企业级贡献！请查看 [贡献指南](CONTRIBUTING.md) 了解详情。
 
 ### 👥 **核心贡献者**
-- [@xctcc](https://github.com/xctcc) - **项目架构师** & **核心开发者**
-- [@your-name](https://github.com/your-name) - **企业级解决方案专家**
+- [@x1t](https://github.com/x1t) - **项目架构师** & **核心开发者**
 
 ### 🏢 **企业合作伙伴**
 - [合作伙伴公司 A] - 技术验证
@@ -306,7 +303,7 @@ jobs:
 本项目采用 [MIT License](LICENSE) - 企业友好，商业可用。
 
 ```
-Copyright (c) 2024 XCT CC
+Copyright (c) 2024 x1t
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -331,10 +328,10 @@ copies of the Software...
 
 **🚀 让文件操作和搜索变得更简单、更安全、更高效！**
 
-[⭐ 给我们一个星标](https://github.com/xctcc/file-bash-tools-rust) | [📧 联系我们](mailto:contact@company.com) | [🌐 官方网站](https://file-bash-tools.company.com)
+[⭐ 给我们一个星标](https://github.com/x1t/windows-file-tools-mcp-rust) | [📧 联系我们](mailto:contact@company.com) | [🌐 官方网站](https://file-bash-tools.company.com)
 
 ---
 
-*Made with ❤️ by [XCT CC](https://github.com/xctcc)*
+*Made with ❤️ by [X1T](https://github.com/x1t)*
 
 </div>
