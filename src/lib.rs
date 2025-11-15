@@ -13,6 +13,7 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use std::path::Path;
+use std::sync::Arc;
 use anyhow::Result;
 use tracing::{debug, info};
 use glob::glob;
@@ -20,6 +21,7 @@ use grep_matcher::Matcher;
 use grep_regex::RegexMatcher;
 use grep_searcher::SearcherBuilder;
 use grep_searcher::sinks::UTF8;
+use tokio::sync::Semaphore;
 
 // 重新导出主服务
 pub use FileBashToolsService as FileToolsServer;
@@ -117,7 +119,8 @@ pub struct TodoItem {
     /** 任务状态 */
     pub status: TodoStatus,
     /** 任务描述的主动形式 */
-    pub activeForm: String,
+    #[serde(alias = "activeForm")]  // 支持两种字段名
+    pub active_form: String,
 }
 
 /// 待办事项状态
@@ -153,6 +156,8 @@ fn default_offset() -> Option<i32> {
 #[derive(Debug, Clone)]
 pub struct FileBashToolsService {
     tool_router: ToolRouter<FileBashToolsService>,
+    /// 并发控制信号量，限制同时处理的文件数量
+    file_semaphore: Arc<Semaphore>,
 }
 
 impl FileBashToolsService {
@@ -160,6 +165,8 @@ impl FileBashToolsService {
     pub fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
+            // 限制同时处理 10 个文件，防止资源耗尽
+            file_semaphore: Arc::new(Semaphore::new(10)),
         }
     }
 
@@ -368,9 +375,16 @@ impl FileBashToolsService {
     where
         F: FnMut(&Path, String) -> Result<(), Box<dyn std::error::Error + Send + Sync>>,
     {
+        // 性能优化：根据搜索类型调整深度限制
+        let max_depth = match req.output_mode.as_str() {
+            "files_with_matches" => 20,  // 文件匹配模式可以搜索更深
+            "count" => 30,               // 计数模式可以搜索更深
+            _ => if req.glob.is_some() { 10 } else { 50 } // 默认模式
+        };
+        
         let entries = walkdir::WalkDir::new(search_path)
             .follow_links(false)
-            .max_depth(if req.glob.is_some() { 10 } else { 50 }); // 限制搜索深度
+            .max_depth(max_depth);
         
         for entry in entries.into_iter().filter_map(|e| e.ok()) {
             let path = entry.path();
@@ -378,6 +392,14 @@ impl FileBashToolsService {
             // 跳过目录
             if path.is_dir() {
                 continue;
+            }
+            
+            // 性能优化：检查文件大小，跳过过大文件
+            if let Ok(metadata) = path.metadata() {
+                if metadata.len() > 10 * 1024 * 1024 { // 10MB 限制
+                    debug!("跳过大文件: {} ({} bytes)", path.display(), metadata.len());
+                    continue;
+                }
             }
             
             // 应用 glob 过滤器
@@ -398,6 +420,10 @@ impl FileBashToolsService {
                 }
             }
             
+            // 并发控制：获取信号量许可
+            let permit = self.file_semaphore.clone().acquire_owned().await
+                .map_err(|e| McpError::internal_error(format!("并发控制错误: {}", e), None))?;
+            
             // 读取文件内容
             match tokio::fs::read_to_string(path).await {
                 Ok(content) => {
@@ -410,6 +436,9 @@ impl FileBashToolsService {
                     continue;
                 }
             }
+            
+            // 释放信号量许可
+            drop(permit);
         }
         
         Ok(())
@@ -422,8 +451,7 @@ impl FileBashToolsService {
             return true;
         }
         
-        if pattern.starts_with("*.") {
-            let ext = &pattern[2..];
+        if let Some(ext) = pattern.strip_prefix("*.") {
             return file_name.ends_with(&format!(".{}", ext));
         }
         
@@ -562,7 +590,7 @@ impl FileBashToolsService {
         let replacements = if req.replace_all {
             original_content.matches(&req.old_string).count()
         } else {
-            if original_content.contains(&req.old_string) { 1 } else { 0 }
+            usize::from(original_content.contains(&req.old_string))
         };
         
         info!("✏️ 文件编辑成功: {} ({} replacements)", req.file_path, replacements);
@@ -683,14 +711,18 @@ impl FileBashToolsService {
         match req.output_mode.as_str() {
             "files_with_matches" => self.grep_files_with_matches(&matcher, search_path, &req).await,
             "count" => self.grep_count(&matcher, search_path, &req).await,
-            "content" | _ => self.grep_content(&matcher, search_path, &req).await,
+            "content" => self.grep_content(&matcher, search_path, &req).await,
+            _ => Err(McpError::invalid_params(
+                format!("无效的输出模式 '{}'，支持的模式: content, files_with_matches, count", req.output_mode), 
+                None
+            )),
         }
     }
 
     /// TodoWrite任务管理工具 (Only Windows)
     #[tool(
         name = "TodoWrite",
-        description = "使用此工具为当前编码会话创建和管理结构化任务清单，帮助跟踪进度、整理复杂任务并向用户展示工作周密性，仅支持 Windows 系统；TodoWrite 工具必填参数结构为 {todos: [{content: 任务描述（例如：编写 Go 并发安全的工具类）, status: 任务状态（可选值：pending = 待处理 | in_progress = 进行中 | completed = 已完成）, activeForm: 正在进行的任务描述（仅 status 为 in_progress 时需填写，例如：调试 goroutine 生命周期管理逻辑）}]}"
+        description = "使用此工具为当前编码会话创建和管理结构化任务清单，帮助跟踪进度、整理复杂任务并向用户展示工作周密性，仅支持 Windows 系统；TodoWrite 工具必填参数结构为 {todos: [{content: 任务描述（例如：编写 Go 并发安全的工具类）, status: 任务状态（可选值：pending = 待处理 | in_progress = 进行中 | completed = 已完成）, active_form: 正在进行的任务描述（仅 status 为 in_progress 时需填写，例如：调试 goroutine 生命周期管理逻辑）}]}"
     )]
     async fn todo_write(
         &self,
@@ -719,7 +751,7 @@ impl FileBashToolsService {
                 i + 1,
                 format!("{:?}", todo.status).to_lowercase(),
                 todo.content,
-                todo.activeForm
+                todo.active_form
             ));
         }
         
@@ -834,17 +866,17 @@ mod tests {
                 TodoItem {
                     content: "测试任务".to_string(),
                     status: TodoStatus::Pending,
-                    activeForm: "测试任务".to_string(),
+                    active_form: "测试任务".to_string(),
                 },
                 TodoItem {
                     content: "进行中的任务".to_string(),
                     status: TodoStatus::InProgress,
-                    activeForm: "进行中的任务".to_string(),
+                    active_form: "进行中的任务".to_string(),
                 },
                 TodoItem {
                     content: "完成的任务".to_string(),
                     status: TodoStatus::Completed,
-                    activeForm: "完成的任务".to_string(),
+                    active_form: "完成的任务".to_string(),
                 },
             ],
         };
@@ -857,7 +889,7 @@ mod tests {
         
         // 验证任务内容
         assert_eq!(valid_request.todos[0].content, "测试任务");
-        assert_eq!(valid_request.todos[1].activeForm, "进行中的任务");
+        assert_eq!(valid_request.todos[1].active_form, "进行中的任务");
         assert_eq!(valid_request.todos[2].content, "完成的任务");
     }
 }
