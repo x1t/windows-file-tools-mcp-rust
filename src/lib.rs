@@ -1,6 +1,6 @@
-//! File-Bash-Tools MCP Server
+//! File Tools MCP Server
 //! 
-//! 企业级文件和Shell工具MCP服务器
+//! 企业级文件工具MCP服务器
 
 use rmcp::{
     ErrorData as McpError, ServerHandler,
@@ -22,7 +22,7 @@ use grep_searcher::SearcherBuilder;
 use grep_searcher::sinks::UTF8;
 
 // 重新导出主服务
-pub use FileBashToolsService as FileBashToolsServer;
+pub use FileBashToolsService as FileToolsServer;
 
 /// Write工具请求
 #[derive(Debug, serde::Deserialize, JsonSchema)]
@@ -149,7 +149,7 @@ fn default_offset() -> Option<i32> {
     Some(1)
 }
 
-/// File-Bash-Tools服务
+/// File Tools服务
 #[derive(Debug, Clone)]
 pub struct FileBashToolsService {
     tool_router: ToolRouter<FileBashToolsService>,

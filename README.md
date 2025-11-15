@@ -1,10 +1,10 @@
 # Windows 文件工具 MCP 服务器
 
-🏢 专为 Windows 环境打造的企业级文件和 Shell 工具 MCP 服务器
+🏢 专为 Windows 环境打造的企业级文件 MCP 服务器
 
 ## 🚀 项目概述
 
-这是一款使用 Rust 实现的高性能、安全的 MCP（模型上下文协议）服务器，专为 Windows 系统设计，提供强大的文件操作和 Shell 命令执行功能。
+这是一款使用 Rust 实现的高性能、安全的 MCP（模型上下文协议）服务器，专为 Windows 系统设计，提供强大的文件操作功能。
 
 ## 🎯 核心功能
 
@@ -12,11 +12,6 @@
 - **写入 (Write)**: 向文件写入内容，支持自动创建目录
 - **读取 (Read)**: 读取文件内容，支持偏移量和行数限制
 - **编辑 (Edit)**: 替换文件中的文本，支持单次或全部替换
-
-### 🖥️ Shell 工具
-- **命令执行 (Bash)**: 执行 PowerShell/CMD 命令，具备安全验证
-- **后台执行 (Background Execution)**: 在后台运行长时间任务
-- **输出监控 (Output Monitoring)**: 实时获取后台任务输出
 
 ### 🔍 搜索工具
 - **文件匹配 (Glob)**: 使用 glob 模式快速匹配文件
@@ -35,7 +30,6 @@ src/
 ├── models/          # 数据结构定义
 ├── tools/           # 工具实现模块
 │   ├── file_tools.rs    # 文件操作工具
-│   ├── shell_tools.rs   # Shell 执行工具
 │   └── search_tools.rs  # 搜索工具
 └── utils/           # 通用工具函数
 ```
@@ -82,7 +76,6 @@ npx @modelcontextprotocol/inspector cargo run
 ## 🛡️ 安全特性
 
 - 路径验证：防止目录遍历攻击
-- 命令验证：防止危险操作执行
 - 输入清理：对所有操作进行输入验证
 - 资源限制：防止资源滥用和拒绝服务
 

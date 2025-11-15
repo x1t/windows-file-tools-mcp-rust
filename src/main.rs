@@ -16,9 +16,8 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
-    tracing::info!("🚀 启动 File-Bash-Tools MCP Server v0.1.0");
+    tracing::info!("🚀 启动 File Tools MCP Server v0.1.0");
     tracing::info!("📁 支持文件操作: Write, Read, Edit");
-    tracing::info!("💻 支持Shell工具: Bash (PowerShell)");
 
     // 创建服务实例
     let service = FileBashToolsService::new().serve(stdio()).await.inspect_err(|e| {

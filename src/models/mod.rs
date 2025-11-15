@@ -4,9 +4,7 @@
 
 pub mod file_ops;
 pub mod search;
-pub mod shell;
 
 // 重新导出所有模型
 pub use file_ops::*;
 pub use search::*;
-pub use shell::*;
