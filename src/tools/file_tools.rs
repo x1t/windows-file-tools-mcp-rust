@@ -4,7 +4,9 @@ use crate::models::file_ops::*;
 use crate::ServerError;
 use rmcp::{tool, tool_router};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
+use tempfile::NamedTempFile;
 use tracing::{debug, error, info};
 
 /// 文件工具处理器
@@ -38,7 +40,7 @@ impl FileTools {
         }
 
         let path = Path::new(file_path);
-        
+
         // 检查路径是否为绝对路径
         if !path.is_absolute() {
             return Err(ServerError::FileSystem("文件路径必须是绝对路径".to_string()));
@@ -52,29 +54,81 @@ impl FileTools {
 
         Ok(())
     }
+
+    /// 原子写入文件内容
+    async fn atomic_write_file(file_path: &str, content: &str) -> Result<u64, ServerError> {
+        // 创建一个临时文件
+        let mut temp_file = NamedTempFile::new()
+            .map_err(|e| ServerError::FileSystem(format!("创建临时文件失败: {}", e)))?;
+
+        // 向临时文件写入内容
+        temp_file.write_all(content.as_bytes())
+            .map_err(|e| ServerError::FileSystem(format!("写入临时文件失败: {}", e)))?;
+
+        // 将临时文件刷入磁盘
+        temp_file.flush()
+            .map_err(|e| ServerError::FileSystem(format!("刷新临时文件失败: {}", e)))?;
+
+        // 将临时文件持久化到最终位置，这是一个原子操作
+        temp_file.persist(file_path)
+            .map_err(|e| ServerError::FileSystem(format!("持久化文件失败: {}", e.error)))?;
+
+        Ok(content.len() as u64)
+    }
+
+    /// 原子编辑文件内容
+    async fn atomic_edit_file(file_path: &str, old_content: &str, new_content: &str, replace_all: bool) -> Result<u64, ServerError> {
+        // 读取原文件内容
+        let original_content = fs::read_to_string(file_path)
+            .map_err(|e| ServerError::FileSystem(format!("读取文件失败: {}", e)))?;
+
+        // 执行替换操作
+        let updated_content = if replace_all {
+            original_content.replace(old_content, new_content)
+        } else {
+            original_content.replacen(old_content, new_content, 1)
+        };
+
+        // 检查内容是否发生了变化
+        if updated_content == original_content {
+            return Ok(0); // 内容没有变化，无需更新文件
+        }
+
+        // 使用原子写入函数来更新文件
+        Self::atomic_write_file(file_path, &updated_content).await?;
+
+        // 计算替换次数
+        let replacements = if replace_all {
+            original_content.matches(old_content).count() as u64
+        } else {
+            if original_content.contains(old_content) { 1 } else { 0 }
+        };
+
+        Ok(replacements)
+    }
 }
 
 #[tool_router]
 impl FileTools {
-    /// 写入文件内容
-    #[tool(description = "Write content to a file")]
+    /// 写入文件内容（原子操作）
+    #[tool(description = "Write content to a file atomically")]
     async fn write(&self, input: WriteInput) -> Result<WriteOutput, ServerError> {
         debug!("📝 Write工具调用: file_path={}", input.file_path);
-        
+
         // 验证文件路径
         Self::validate_file_path(&input.file_path)?;
-        
+
         // 确保目录存在
         Self::ensure_directory_exists(&input.file_path).await?;
-        
-        // 写入文件
-        let bytes_written = fs::write(&input.file_path, &input.content)?;
-        
-        info!("✅ 文件写入成功: {} ({} bytes)", input.file_path, bytes_written);
-        
+
+        // 原子写入文件
+        let bytes_written = Self::atomic_write_file(&input.file_path, &input.content).await?;
+
+        info!("✅ 文件原子写入成功: {} ({} bytes)", input.file_path, bytes_written);
+
         Ok(WriteOutput {
-            message: format!("成功写入文件: {}", input.file_path),
-            bytes_written: bytes_written as u64,
+            message: format!("成功原子写入文件: {}", input.file_path),
+            bytes_written,
             file_path: input.file_path,
         })
     }
@@ -83,31 +137,31 @@ impl FileTools {
     #[tool(description = "Read content from a file")]
     async fn read(&self, input: ReadInput) -> Result<rmcp::tool::Result, ServerError> {
         debug!("📖 Read工具调用: file_path={}", input.file_path);
-        
+
         // 验证文件路径
         Self::validate_file_path(&input.file_path)?;
-        
+
         // 检查文件是否存在
         if !Path::new(&input.file_path).exists() {
             return Err(ServerError::FileSystem(format!("文件不存在: {}", input.file_path)));
         }
-        
+
         // 读取文件内容
         let content = fs::read_to_string(&input.file_path)?;
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
-        
+
         // 处理偏移和限制
         let offset = input.offset.unwrap_or(1).max(1) as usize - 1;
         let limit = input.limit.unwrap_or(total_lines as i32) as usize;
-        
+
         let end_index = (offset + limit).min(total_lines);
         let slice = if offset < total_lines {
             &lines[offset..end_index]
         } else {
             &[]
         };
-        
+
         // 检查是否为图像文件
         let path = Path::new(&input.file_path);
         if let Some(extension) = path.extension() {
@@ -124,65 +178,58 @@ impl FileTools {
                     "svg" => "image/svg+xml",
                     _ => "application/octet-stream",
                 };
-                
+
                 let base64_data = base64::encode(&image_data);
-                
+
                 info!("🖼️ 图像文件读取成功: {} ({} bytes)", input.file_path, image_data.len());
-                
+
                 let output = ReadImageOutput {
                     image: base64_data,
                     mime_type: mime_type.to_string(),
                     file_size: image_data.len() as u64,
                 };
-                
+
                 return Ok(rmcp::tool::Result::Image(serde_json::to_value(output)?));
             }
         }
-        
+
         // 处理文本文件
         let mut result_content = String::new();
         for (i, line) in slice.iter().enumerate() {
             let line_num = offset + i + 1;
             result_content.push_str(&format!("{}\t{}\n", line_num, line));
         }
-        
+
         info!("📄 文本文件读取成功: {} ({} lines returned)", input.file_path, slice.len());
-        
+
         let output = ReadTextOutput {
             content: result_content,
             total_lines: total_lines as u64,
             lines_returned: slice.len() as u64,
         };
-        
+
         Ok(rmcp::tool::Result::Text(serde_json::to_value(output)?))
     }
 
-    /// 编辑文件内容
-    #[tool(description = "Edit file content by replacing text")]
+    /// 编辑文件内容（原子操作）
+    #[tool(description = "Edit file content by replacing text atomically")]
     async fn edit(&self, input: EditInput) -> Result<EditOutput, ServerError> {
         debug!("✏️ Edit工具调用: file_path={}", input.file_path);
-        
+
         // 验证文件路径
         Self::validate_file_path(&input.file_path)?;
-        
+
         // 检查文件是否存在
         if !Path::new(&input.file_path).exists() {
             return Err(ServerError::FileSystem(format!("文件不存在: {}", input.file_path)));
         }
-        
-        // 读取原文件内容
-        let original_content = fs::read_to_string(&input.file_path)?;
-        
-        // 执行替换操作
+
+        // 使用原子编辑操作
         let replace_all = input.replace_all.unwrap_or(false);
-        let new_content = if replace_all {
-            original_content.replace(&input.old_string, &input.new_string)
-        } else {
-            original_content.replacen(&input.old_string, &input.new_string, 1)
-        };
-        
-        // 检查是否有变化
-        if new_content == original_content {
+        let replacements = Self::atomic_edit_file(&input.file_path, &input.old_string, &input.new_string, replace_all).await?;
+
+        // 如果没有发生替换，返回相应信息
+        if replacements == 0 {
             info!("⚠️ 文件内容无变化: {}", input.file_path);
             return Ok(EditOutput {
                 message: format!("文件 '{}' 中未找到要替换的内容", input.file_path),
@@ -190,21 +237,11 @@ impl FileTools {
                 file_path: input.file_path,
             });
         }
-        
-        // 写入新内容
-        fs::write(&input.file_path, new_content)?;
-        
-        // 计算替换次数
-        let replacements = if replace_all {
-            original_content.matches(&input.old_string).count() as u64
-        } else {
-            if original_content.contains(&input.old_string) { 1 } else { 0 }
-        };
-        
-        info!("✏️ 文件编辑成功: {} ({} replacements)", input.file_path, replacements);
-        
+
+        info!("✏️ 文件原子编辑成功: {} ({} replacements)", input.file_path, replacements);
+
         Ok(EditOutput {
-            message: format!("成功编辑文件: {}", input.file_path),
+            message: format!("成功原子编辑文件: {}", input.file_path),
             replacements,
             file_path: input.file_path,
         })

@@ -22,6 +22,9 @@ use grep_regex::RegexMatcher;
 use grep_searcher::SearcherBuilder;
 use grep_searcher::sinks::UTF8;
 use tokio::sync::Semaphore;
+use std::fs;
+use std::io::Write;
+use tempfile::NamedTempFile;
 
 // 重新导出主服务
 pub use FileBashToolsService as FileToolsServer;
@@ -464,29 +467,27 @@ impl FileBashToolsService {
     /// 写入文件内容 (Only Windows)
     #[tool(
         name = "write_file",
-        description = "Write content to a file. Only Windows. Use double backslashes for paths like \"C:\\\\DumpStack.log\""
+        description = "Write content to a file atomically. Only Windows. Use double backslashes for paths like \"C:\\\\DumpStack.log\""
     )]
     async fn write(
         &self,
         Parameters(req): Parameters<WriteRequest>,
     ) -> Result<CallToolResult, McpError> {
         debug!("Write工具调用: file_path={}", req.file_path);
-        
+
         // 验证文件路径
         Self::validate_file_path(&req.file_path)?;
-        
+
         // 确保目录存在
         Self::ensure_directory_exists(&req.file_path).await?;
-        
-        // 写入文件
-        tokio::fs::write(&req.file_path, &req.content).await
-            .map_err(|e| McpError::internal_error(format!("写入文件失败: {}", e), None))?;
-        
-        let bytes_written = req.content.len();
-        info!("✅ 文件写入成功: {} ({} bytes)", req.file_path, bytes_written);
-        
+
+        // 使用原子写入操作
+        let bytes_written = Self::atomic_write_file(&req.file_path, &req.content).await?;
+
+        info!("✅ 文件原子写入成功: {} ({} bytes)", req.file_path, bytes_written);
+
         Ok(CallToolResult::success(vec![
-            Content::text(format!("成功写入文件: {}，字节数: {}", req.file_path, bytes_written))
+            Content::text(format!("成功原子写入文件: {}，字节数: {}", req.file_path, bytes_written))
         ]))
     }
 
@@ -538,65 +539,98 @@ impl FileBashToolsService {
         
         Ok(CallToolResult::success(vec![
             Content::text(format!(
-                "文件内容:\n{}\n总计行数: {}, 返回行数: {}", 
+                "文件内容:\n{}\n总计行数: {}, 返回行数: {}",
                 result_content, total_lines, slice.len()
             ))
         ]))
     }
 
+    /// 原子写入文件内容
+    async fn atomic_write_file(file_path: &str, content: &str) -> Result<u64, McpError> {
+        // 创建一个临时文件
+        let mut temp_file = NamedTempFile::new()
+            .map_err(|e| McpError::internal_error(format!("创建临时文件失败: {}", e), None))?;
+
+        // 向临时文件写入内容
+        temp_file.write_all(content.as_bytes())
+            .map_err(|e| McpError::internal_error(format!("写入临时文件失败: {}", e), None))?;
+
+        // 将临时文件刷入磁盘
+        temp_file.flush()
+            .map_err(|e| McpError::internal_error(format!("刷新临时文件失败: {}", e), None))?;
+
+        // 将临时文件持久化到最终位置，这是一个原子操作
+        temp_file.persist(file_path)
+            .map_err(|e| McpError::internal_error(format!("持久化文件失败: {}", e.error), None))?;
+
+        Ok(content.len() as u64)
+    }
+
+    /// 原子编辑文件内容
+    async fn atomic_edit_file(file_path: &str, old_content: &str, new_content: &str, replace_all: bool) -> Result<u64, McpError> {
+        // 读取原文件内容
+        let original_content = fs::read_to_string(file_path)
+            .map_err(|e| McpError::internal_error(format!("读取文件失败: {}", e), None))?;
+
+        // 执行替换操作
+        let updated_content = if replace_all {
+            original_content.replace(old_content, new_content)
+        } else {
+            original_content.replacen(old_content, new_content, 1)
+        };
+
+        // 检查内容是否发生了变化
+        if updated_content == original_content {
+            return Ok(0); // 内容没有变化，无需更新文件
+        }
+
+        // 使用原子写入函数来更新文件
+        Self::atomic_write_file(file_path, &updated_content).await?;
+
+        // 计算替换次数
+        let replacements = if replace_all {
+            original_content.matches(old_content).count() as u64
+        } else {
+            if original_content.contains(old_content) { 1 } else { 0 }
+        };
+
+        Ok(replacements)
+    }
+
     /// 编辑文件内容 (Only Windows)
     #[tool(
         name = "edit_file",
-        description = "Edit file content by replacing text. Only Windows. Use double backslashes for paths like \"C:\\\\DumpStack.log\""
+        description = "Edit file content by replacing text atomically. Only Windows. Use double backslashes for paths like \"C:\\\\DumpStack.log\""
     )]
     async fn edit(
         &self,
         Parameters(req): Parameters<EditRequest>,
     ) -> Result<CallToolResult, McpError> {
         debug!("Edit工具调用: file_path={}", req.file_path);
-        
+
         // 验证文件路径
         Self::validate_file_path(&req.file_path)?;
-        
+
         // 检查文件是否存在
         if !Path::new(&req.file_path).exists() {
             return Err(McpError::invalid_params(format!("文件不存在: {}", req.file_path), None));
         }
-        
-        // 读取原文件内容
-        let original_content = tokio::fs::read_to_string(&req.file_path).await
-            .map_err(|e| McpError::internal_error(format!("读取文件失败: {}", e), None))?;
-        
-        // 执行替换操作
-        let new_content = if req.replace_all {
-            original_content.replace(&req.old_string, &req.new_string)
-        } else {
-            original_content.replacen(&req.old_string, &req.new_string, 1)
-        };
-        
-        // 检查是否有变化
-        if new_content == original_content {
+
+        // 使用原子编辑操作
+        let replacements = Self::atomic_edit_file(&req.file_path, &req.old_string, &req.new_string, req.replace_all).await?;
+
+        // 如果没有发生替换，返回相应信息
+        if replacements == 0 {
             info!("⚠️ 文件内容无变化: {}", req.file_path);
             return Ok(CallToolResult::success(vec![
                 Content::text(format!("文件 '{}' 中未找到要替换的内容", req.file_path))
             ]));
         }
-        
-        // 写入新内容
-        tokio::fs::write(&req.file_path, new_content).await
-            .map_err(|e| McpError::internal_error(format!("写入文件失败: {}", e), None))?;
-        
-        // 计算替换次数
-        let replacements = if req.replace_all {
-            original_content.matches(&req.old_string).count()
-        } else {
-            usize::from(original_content.contains(&req.old_string))
-        };
-        
-        info!("✏️ 文件编辑成功: {} ({} replacements)", req.file_path, replacements);
-        
+
+        info!("✏️ 文件原子编辑成功: {} ({} replacements)", req.file_path, replacements);
+
         Ok(CallToolResult::success(vec![
-            Content::text(format!("成功编辑文件: {}，替换次数: {}", req.file_path, replacements))
+            Content::text(format!("成功原子编辑文件: {}，替换次数: {}", req.file_path, replacements))
         ]))
     }
 
