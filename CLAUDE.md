@@ -9,13 +9,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 核心功能
 
 ### 📁 文件操作工具
-- **写入 (Write)**: 向文件写入内容，支持自动创建目录，使用原子操作确保数据完整性
-- **读取 (Read)**: 读取文件内容，支持偏移量和行数限制  
-- **编辑 (Edit)**: 替换文件中的文本，支持单次或全部替换
+- **写入 (write_file)**: 向文件写入内容，支持自动创建目录，使用原子操作确保数据完整性
+- **读取 (read_file)**: 读取文件内容，支持偏移量和行数限制  
+- **编辑 (edit_file)**: 替换文件中的文本，支持单次或全部替换
 
 ### 🔍 搜索工具
-- **文件匹配 (Glob)**: 使用 glob 模式快速匹配文件，支持 **/*.js 等复杂模式
-- **文本搜索 (Grep)**: 基于 ripgrep 核心库的强大文本搜索，支持三种输出模式：
+- **文件匹配 (glob)**: 使用 glob 模式快速匹配文件，支持 **/*.js 等复杂模式
+- **文本搜索 (grep)**: 基于 ripgrep 核心库的强大文本搜索，支持三种输出模式：
   - `content`: 显示匹配的具体内容
   - `files_with_matches`: 仅显示包含匹配的文件列表
   - `count`: 显示每个文件中的匹配次数
@@ -80,7 +80,15 @@ npx @modelcontextprotocol/inspector cargo run --release
 
 # 作为 stdio 服务器运行（默认）
 cargo run --release
+
+# 开发模式运行（用于调试）
+cargo run
 ```
+
+#### 调试技巧
+- 使用 `RUST_LOG=debug` 环境变量启用详细日志
+- MCP Inspector 提供交互式工具测试界面
+- 日志输出到 stderr，包含操作ID和性能信息
 
 ## 项目架构
 
@@ -90,25 +98,25 @@ src/
 ├── main.rs              # 服务器入口点，初始化日志和服务 (31行)
 ├── lib.rs               # 核心服务实现，包含所有 MCP 工具实现 (960行)
 ├── models/              # 数据结构定义
-│   ├── mod.rs           # 模块导出
+│   ├── mod.rs           # 模块导出 (10行)
 │   ├── file_ops.rs      # 文件操作相关数据结构 (102行)
-│   └── search.rs        # 搜索相关数据结构 (4257行)
+│   └── search.rs        # 搜索相关数据结构 (119行)
 ├── handlers/            # 请求处理器
-│   ├── mod.rs           # 模块导出 (188行)
-│   └── file_handler.rs  # 文件请求处理器 (6324行)
+│   ├── mod.rs           # 模块导出 (3行)
+│   └── file_handler.rs  # 文件请求处理器 (158行)
 ├── tools/               # 工具实现模块
-│   ├── mod.rs           # 模块导出
+│   ├── mod.rs           # 模块导出 (10行)
 │   ├── file_tools.rs    # 文件操作工具实现 (249行)
-│   └── search_tools.rs  # 搜索工具实现 (58行)
+│   └── search_tools.rs  # 搜索工具实现 (169行)
 └── utils/               # 通用工具函数
-    ├── mod.rs           # 模块导出
-    ├── ripgrep_utils.rs # ripgrep 相关工具 (7450行)
-    └── fd_utils.rs      # 文件描述工具 (6341行)
+    ├── mod.rs           # 模块导出 (4行)
+    ├── ripgrep_utils.rs # ripgrep 相关工具 (6341行)
+    └── fd_utils.rs      # 文件描述工具 (7450行)
 ```
 
 ### 关键设计特点
 
-1. **单文件聚合架构**: 核心逻辑集中在 `src/lib.rs` (960行)，便于维护和部署
+1. **单文件聚合架构**: 核心逻辑集中在 `src/lib.rs` (960行)，包含所有 MCP 工具实现和数据结构定义
 2. **模块化辅助设计**: 虽然核心集中在单文件，但保持了清晰的模块结构
 3. **并发控制**: 使用 Semaphore 限制同时处理的文件数量（最多10个），防止资源耗尽
 4. **性能优化**: 
@@ -120,6 +128,7 @@ src/
    - 输入清理和验证
    - Windows路径格式支持（双反斜杠）
    - 原子文件操作，使用 NamedTempFile 确保数据完整性
+   - 降级机制：原子操作失败时自动回退到标准文件操作
 
 ### MCP 工具实现
 
@@ -198,10 +207,17 @@ MCP Client → stdio → main.rs → lib.rs → Tool Router → Specific Tool �
 - 原子文件操作防止数据损坏
 
 ### 测试策略
-- 单元测试覆盖核心功能
+- 单元测试覆盖核心功能（位于 `src/lib.rs` 的 `tests` 模块）
 - 集成测试验证工具行为
 - 性能测试确保大文件处理能力
 - 使用 MCP Inspector 进行交互式测试
+
+#### 内置测试用例
+项目包含以下测试用例：
+- `test_glob_pattern_matching`: 测试 glob 模式匹配功能
+- `test_glob_request_validation`: 测试 GlobRequest 结构体验证
+- `test_grep_regex_matcher`: 测试正则表达式匹配器
+- `test_todo_write_request_validation`: 测试 TodoWrite 功能验证
 
 ### 安全特性
 - 严格的绝对路径验证，防止路径遍历攻击
@@ -243,4 +259,67 @@ MCP Client → stdio → main.rs → lib.rs → Tool Router → Specific Tool �
     "output_mode": "content"
   }
 }
+
+// 任务管理
+{
+  "tool": "TodoWrite",
+  "arguments": {
+    "todos": [
+      {
+        "content": "实现新功能",
+        "status": "in_progress",
+        "active_form": "正在实现新功能的核心逻辑"
+      }
+    ]
+  }
+}
 ```
+
+## 重要实现细节
+
+### 原子文件操作
+- 使用 `tempfile::NamedTempFile` 在目标文件同目录创建临时文件
+- 写入完成后调用 `persist()` 进行原子重命名操作
+- 失败时自动降级到标准 `tokio::fs::write` 操作
+
+### 并发控制实现
+```rust
+// 在 FileBashToolsService 结构体中
+file_semaphore: Arc<Semaphore>
+
+// 使用示例
+let permit = self.file_semaphore.clone().acquire_owned().await?;
+// ... 文件操作 ...
+drop(permit); // 释放许可
+```
+
+### 搜索性能优化
+- 根据输出模式动态调整搜索深度
+- 大文件自动跳过 (>10MB)
+- 支持上下文行显示和多行匹配
+- 内置 glob 和文件类型过滤
+
+## Cursor 和 Copilot 规则
+
+### 项目特点
+本项目是一个企业级的 Windows 文件工具 MCP 服务器，具有以下特点：
+- 专为 Windows 环境优化
+- 使用 Rust + RMCP SDK
+- 高性能文件操作和搜索
+- 企业级安全性和并发控制
+- 原子文件操作确保数据完整性
+
+### 推荐的 Cursor 规则配置
+如果使用 Cursor IDE，建议配置以下规则：
+- 优先使用 `&str` 而非 `String` 作为函数参数
+- 使用 `Result<T, E>` 进行错误处理，避免 `unwrap()`
+- 实现常见trait：`Debug`, `Clone`, `PartialEq`
+- Windows 路径格式特殊处理（双反斜杠）
+- 原子文件操作优先，失败时自动降级
+
+### Copilot 指导原则
+- 使用 RMCP 宏系统实现 MCP 工具
+- 严格的输入验证和路径安全检查
+- 企业级日志记录，包含操作ID和性能信息
+- 使用 `Arc<Semaphore>` 进行并发控制
+- 遵循 Windows 文件系统最佳实践
