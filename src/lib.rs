@@ -547,22 +547,52 @@ impl FileBashToolsService {
 
     /// 原子写入文件内容
     async fn atomic_write_file(file_path: &str, content: &str) -> Result<u64, McpError> {
-        // 创建一个临时文件
-        let mut temp_file = NamedTempFile::new()
-            .map_err(|e| McpError::internal_error(format!("创建临时文件失败: {}", e), None))?;
+        let path = Path::new(file_path);
 
-        // 向临时文件写入内容
-        temp_file.write_all(content.as_bytes())
-            .map_err(|e| McpError::internal_error(format!("写入临时文件失败: {}", e), None))?;
+        // 确保父目录存在
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                tokio::fs::create_dir_all(parent).await
+                    .map_err(|e| McpError::internal_error(format!("创建目录失败: {}", e), None))?;
+            }
+        }
 
-        // 将临时文件刷入磁盘
-        temp_file.flush()
-            .map_err(|e| McpError::internal_error(format!("刷新临时文件失败: {}", e), None))?;
+        // 尝试在目标文件相同目录中创建临时文件，实现真正的原子操作
+        let temp_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        match NamedTempFile::new_in(temp_dir) {
+            Ok(mut temp_file) => {
+                // 向临时文件写入内容
+                if let Err(e) = temp_file.write_all(content.as_bytes()) {
+                    return Err(McpError::internal_error(format!("写入临时文件失败: {}", e), None));
+                }
 
-        // 将临时文件持久化到最终位置，这是一个原子操作
-        temp_file.persist(file_path)
-            .map_err(|e| McpError::internal_error(format!("持久化文件失败: {}", e.error), None))?;
+                // 将临时文件刷入磁盘
+                if let Err(e) = temp_file.flush() {
+                    return Err(McpError::internal_error(format!("刷新临时文件失败: {}", e), None));
+                }
 
+                // 将临时文件持久化到最终位置，这是一个原子操作
+                match temp_file.persist(file_path) {
+                    Ok(_) => Ok(content.len() as u64),
+                    Err(e) => {
+                        // 如果原子操作仍然失败（例如权限问题），降级到标准文件操作
+                        debug!("原子操作失败，降级到标准写入: {}", e.error);
+                        Self::fallback_write_file(file_path, content).await
+                    }
+                }
+            }
+            Err(e) => {
+                // 如果无法在目标目录创建临时文件，降级到标准文件操作
+                debug!("无法在目标目录创建临时文件，降级到标准写入: {}", e);
+                Self::fallback_write_file(file_path, content).await
+            }
+        }
+    }
+
+    /// 备用文件写入方法（非原子操作）
+    async fn fallback_write_file(file_path: &str, content: &str) -> Result<u64, McpError> {
+        tokio::fs::write(file_path, content).await
+            .map_err(|e| McpError::internal_error(format!("写入文件失败: {}", e), None))?;
         Ok(content.len() as u64)
     }
 
@@ -826,6 +856,7 @@ impl ServerHandler for FileBashToolsService {
 mod tests {
     use super::*;
     use glob::glob;
+    use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn test_glob_pattern_matching() {
