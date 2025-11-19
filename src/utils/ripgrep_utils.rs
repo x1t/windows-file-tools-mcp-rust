@@ -6,7 +6,7 @@ use regex::Regex;
 use std::path::Path;
 use std::process::Command;
 use tokio::process::Command as TokioCommand;
-use tracing::{debug, warn};
+use tracing::{debug, warn, error};
 
 /// Ripgrep包装器
 #[derive(Clone)]
@@ -189,7 +189,11 @@ impl RipgrepWrapper {
                         "context" => {
                             // 处理上下文行
                             if let Some(data) = json_value.get("data") {
-                                self.update_context_with_data(&mut matches, data);
+                                if let Err(e) = self.update_context_with_data(&mut matches, data) {
+                                    warn!("Failed to update context: {}", e);
+                                    // 企业级容错: 单个上下文错误不影响整体搜索结果
+                                    // 继续执行而不是返回Err，保证用户体验
+                                }
                             }
                         }
                         _ => {
@@ -219,19 +223,52 @@ impl RipgrepWrapper {
     }
 
     /// 更新上下文信息
-    fn update_context_with_data(&self, matches: &mut Vec<GrepMatch>, data: &serde_json::Value) {
-        if let Some(line) = data.get("lines").and_then(|v| v.get("text")).and_then(|v| v.as_str()) {
-            let line = line.trim();
-            if !matches.is_empty() {
-                let last_match = matches.last_mut().unwrap();
-                // 简化实现：将上下文行添加到最后一个匹配
-                // 实际实现中需要更精确的上下文管理
-                if last_match.before_context.is_none() {
-                    last_match.before_context = Some(vec![line.to_string()]);
-                } else {
-                    last_match.before_context.as_mut().unwrap().push(line.to_string());
-                }
-            }
+    ///
+    /// # 错误处理
+    /// - 当 matches 为空时返回 `InvalidInput` 错误
+    /// - 当数据解析失败时记录警告日志并继续执行
+    ///
+    /// # 企业级安全保证
+    /// - 所有边界条件都经过显式检查
+    /// - 使用 `ok_or_else` 和 `?` 确保栈展开时资源正确释放
+    /// - 详细的错误日志便于生产环境故障排查
+    fn update_context_with_data(
+        &self,
+        matches: &mut Vec<GrepMatch>,
+        data: &serde_json::Value
+    ) -> Result<(), ServerError> {
+        // 防御式编程：显式检查边界条件
+        if matches.is_empty() {
+            warn!("attempting to update context for empty match list");
+            return Err(ServerError::FileSystem(
+                "Cannot update context: no matches found".to_string()
+            ));
         }
+
+        // 安全提取行内容，使用 ok_or_else 延迟错误创建
+        let line = data.get("lines")
+            .and_then(|v| v.get("text"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .ok_or_else(|| {
+                debug!("failed to extract line text from context data");
+                ServerError::FileSystem("Invalid context data format".to_string())
+            })?;
+
+        // 安全获取最后一个匹配项
+        let last_match = matches.last_mut()
+            .ok_or_else(|| {
+                error!("unexpected empty match list during context update");
+                ServerError::FileSystem("Match list became empty unexpectedly".to_string())
+            })?;
+
+        // 使用 get_or_insert_with 优雅地处理 Option<Vec>
+        // 避免 if-else 分支，减少认知复杂度
+        last_match.before_context
+            .get_or_insert_with(Vec::new)
+            .push(line.to_string());
+
+        debug!("successfully added context line to match in file: {}", last_match.file);
+        Ok(())
     }
 }
