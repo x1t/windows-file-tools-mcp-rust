@@ -8,7 +8,7 @@ license = "MIT"
 
 [dependencies]
 # RMCP SDK from crates.io
-rmcp = { version = "0.8.5", features = [
+rmcp = { version = "0.12.0", features = [
     "server",
     "macros",
     "transport-io",
