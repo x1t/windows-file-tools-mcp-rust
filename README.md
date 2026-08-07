@@ -7,7 +7,7 @@
 
 <p>
     <a href="#-快速开始"><img src="https://img.shields.io/badge/状态-生产就绪-green" alt="Production Ready"></a>
-    <a href="#-技术栈"><img src="https://img.shields.io/badge/Rust-1.70+-orange" alt="Rust Version"></a>
+    <a href="#-技术栈"><img src="https://img.shields.io/badge/Rust-1.88+-orange" alt="Rust Version"></a>
     <a href="https://github.com/x1t/windows-file-tools-mcp-rust"><img src="https://img.shields.io/badge/许可证-MIT-blue" alt="License"></a>
     <a href="https://github.com/x1t/windows-file-tools-mcp-rust/issues"><img src="https://img.shields.io/badge/问题-欢迎提出-yellow" alt="Issues Welcome"></a>
     <a href="https://img.shields.io/badge/版本-0.1.0--blue" alt="Version"></a>
@@ -60,14 +60,14 @@
 | 功能           | 描述           | 特性                                                                                                                                    |
 | -------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | **写入** | `write_file` | ✅ 自动创建目录 `<br>`✅ **原子写入操作**（NamedTempFile）`<br>`✅ 降级机制 `<br>`✅ 详细错误反馈 `<br>`✅ 完整性验证 |
-| **读取** | `read_file`  | ✅ 按行读取 `<br>`✅ 偏移量和行数限制 `<br>`✅ 行号显示 `<br>`✅ 大文件自动跳过 `<br>`✅ 企业级日志记录               |
+| **读取** | `read_file`  | ✅ 按行读取 `<br>`✅ 偏移量和行数限制 `<br>`✅ 行号显示 `<br>`✅ 文件不存在校验 `<br>`✅ 企业级日志记录               |
 | **编辑** | `edit_file`  | ✅ **原子编辑操作**`<br>`✅ 单次/全部替换 `<br>`✅ 安全编辑 `<br>`✅ 变更统计 `<br>`✅ 失败自动回滚机制                 |
 
 ### 🔍 搜索工具
 
 | 工具           | 功能     | 输出模式                                                                                                                                   |
 | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Glob** | `glob` | 📁 文件模式匹配 `<br>`🎯 **/*.js 等复杂模式 `<br>`⚡ 高性能遍历 `<br>`🧠 **智能深度控制**（20层深度）                              |
+| **Glob** | `glob` | 📁 文件模式匹配 `<br>`🎯 **/*.js 等复杂模式 `<br>`⚡ 基于 glob crate 的 `**/` 递归遍历 `<br>`🔤 结果按路径排序 |
 | **Grep** | `grep` | 📝**content**: 显示匹配内容 `<br>`📂 **files_with_matches**: 文件列表 `<br>`🔢 **count**: 匹配统计 `<br>`⚡ **动态深度调整**（模式自适应） |
 
 ### 📋 任务管理
@@ -92,8 +92,8 @@
 ```mermaid
 graph TB
     A[MCP 客户端] --> B[stdio 通信]
-    B --> C[main.rs - 31行服务器入口]
-    C --> D[lib.rs - 960行核心服务]
+    B --> C[main.rs - 30行服务器入口]
+    C --> D[lib.rs - 951行核心服务]
     D --> E[RMCP工具路由层]
     E --> F[文件操作工具]
     E --> G[搜索工具]
@@ -118,27 +118,12 @@ graph TB
 ```
 file-bash-tools-mcp/
 ├── 📄 src/
-│   ├── 🚀 main.rs              # 31行 - 服务器入口点，日志和服务初始化
-│   ├── ⚙️ lib.rs               # 960行 - 核心服务实现，所有MCP工具和数据结构
-│   ├── 📂 models/              # 数据结构定义模块
-│   │   ├── 📄 mod.rs           # 10行 - 模块导出
-│   │   ├── 📄 file_ops.rs      # 102行 - 文件操作相关数据结构
-│   │   └── 📄 search.rs        # 119行 - 搜索功能数据结构
-│   ├── 📂 handlers/            # 请求处理器模块
-│   │   ├── 📄 mod.rs           # 3行 - 模块导出
-│   │   └── 📄 file_handler.rs  # 158行 - 文件请求处理器实现
-│   ├── 📂 tools/               # 工具实现模块
-│   │   ├── 📄 mod.rs           # 10行 - 模块导出
-│   │   ├── 🔧 file_tools.rs    # 249行 - 文件操作工具实现
-│   │   └── 🔍 search_tools.rs  # 169行 - 搜索工具实现
-│   └── 📂 utils/               # 通用工具函数模块
-│       ├── 📄 mod.rs           # 4行 - 模块导出
-│       ├── 🔧 ripgrep_utils.rs # 6341行 - ripgrep 核心库工具
-│       └── 📋 fd_utils.rs      # 7450行 - 文件描述工具
-├── 📄 Cargo.toml               # 64行 - 项目配置和依赖管理
-├── 📄 CLAUDE.md                # Claude开发指南，完整的项目文档
-├── 📄 README.md                # 项目说明文档
-└── 📚 .git/                    # Git版本控制
+│   ├── 🚀 main.rs               # 30行 - 服务器入口点，日志和服务初始化
+│   └── ⚙️ lib.rs                # 951行 - 核心服务实现（唯一被编译的实现，含全部6个工具）
+├── 📄 Cargo.toml                # 63行 - 项目配置和依赖管理
+├── 📄 CLAUDE.md                 # Claude开发指南，完整的项目文档
+├── 📄 README.md                 # 项目说明文档
+└── 📚 .git/                     # Git版本控制
 ```
 
 ---
@@ -151,9 +136,9 @@ file-bash-tools-mcp/
 
 | 组件 | 版本 | 用途 |
 | --- | --- | --- |
-| ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat-square&logo=rust) | 1.70+ | 核心编程语言 |
+| ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat-square&logo=rust) | 1.88+ | 核心编程语言 |
 | ![Tokio](https://img.shields.io/badge/-Tokio-0057B7?style=flat-square) | 1.42 | 异步运行时 |
-| ![RMCP](https://img.shields.io/badge/-RMCP-9CF?style=flat-square) | 0.8.5 | MCP SDK |
+| ![RMCP](https://img.shields.io/badge/-RMCP-9CF?style=flat-square) | 3.1.1 | MCP SDK（server/macros/transport-io 特性） |
 
 ### 📦 序列化和验证
 
@@ -197,7 +182,7 @@ file-bash-tools-mcp/
 
 ### 📋 系统要求
 
-- **🦀 Rust** 1.70+
+- **🦀 Rust** 1.88+（rmcp 3.1.1 的 MSRV）
 - **📦 Cargo** 包管理器
 - **🖥️ Windows** 操作系统
 
@@ -396,13 +381,13 @@ npx @modelcontextprotocol/inspector cargo run --release
   "mcpServers": {
     "file-bash-tools": {
       "command": "cargo",
-      "args": ["run", "--release", "--manifest-path", "H:/mcp/windows-file-tools-mcp-rust/Cargo.toml"]
+      "args": ["run", "--release", "--manifest-path", "F:/mcp/windows-file-tools-mcp-rust/Cargo.toml"]
     }
   }
 }
 ```
 
-> **注意**: 请将 `H:/mcp/windows-file-tools-mcp-rust/Cargo.toml` 替换为您的实际项目路径
+> **注意**: 请将 `F:/mcp/windows-file-tools-mcp-rust/Cargo.toml` 替换为您的实际项目路径
 
 ---
 
@@ -423,12 +408,11 @@ npx @modelcontextprotocol/inspector cargo run --release
 ### 🎯 性能优化亮点
 
 - **🔄 智能并发控制**: 使用 `Arc<Semaphore>` 最多同时处理 10 个文件，防止资源耗尽
-- **📏 动态深度调整**: 根据搜索模式智能调整遍历深度
-  - 文件匹配模式：**20层**深度
-  - 计数模式：**30层**深度  
-  - 默认模式：**50层**深度
-- **💾 大文件跳过**: 自动跳过超过 **10MB** 的大文件
-- **⚡ 缓存机制**: 路径验证结果缓存，提升重复操作性能
+- **📏 动态深度调整**（grep 的 `search_files`，lib.rs:377）:
+  - `files_with_matches` 模式：**20层**深度
+  - `count` 模式：**30层**深度
+  - 默认模式：有 glob 过滤时 **10层**，否则 **50层**
+- **💾 大文件跳过**: 搜索时自动跳过超过 **10MB** 的大文件
 - **🛡️ 原子操作**: 使用 `NamedTempFile` 确保文件操作的原子性和数据完整性
 - **🔄 降级机制**: 原子操作失败时自动回退到标准文件操作
 - **🧠 Windows优化**: 专门针对Windows路径格式（双反斜杠）和文件系统特性优化
@@ -441,9 +425,7 @@ npx @modelcontextprotocol/inspector cargo run --release
 
 | 文档                 | 描述                 | 链接                                                    |
 | -------------------- | -------------------- | ------------------------------------------------------- |
-| 📖**用户指南** | 完整的使用说明和示例 | [CLAUDE.md](CLAUDE.md)                                     |
-| 🐛**调试指南** | 问题诊断和调试技巧   | [rust-debug_testing_guide.md](rust-debug_testing_guide.md) |
-| 🔧**工具指南** | stdio 工具详细说明   | [rust-stdio-tools.md](rust-stdio-tools.md)                 |
+| 📖**开发指南** | 完整的开发说明和示例 | [CLAUDE.md](CLAUDE.md)                                     |
 
 </div>
 
@@ -518,7 +500,7 @@ git push origin feature/amazing-feature
 
 本项目的企业级特性得益于以下优秀的开源技术：
 
-- **RMCP 0.8.5**: 让MCP服务器开发变得简单高效
+- **RMCP 3.1.1**: 让MCP服务器开发变得简单高效
 - **ripgrep核心**: 为我们提供世界级的文本搜索能力
 - **Tokio异步**: 让高并发文件操作成为可能
 - **原子操作**: 确保数据完整性和企业级可靠性
