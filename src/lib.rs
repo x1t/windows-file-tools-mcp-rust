@@ -4,10 +4,7 @@
 
 use rmcp::{
     ErrorData as McpError, ServerHandler,
-    handler::server::{
-        router::tool::ToolRouter,
-        wrapper::Parameters,
-    },
+    handler::server::wrapper::Parameters,
     model::*,
     schemars::{self, JsonSchema},
     tool, tool_handler, tool_router,
@@ -158,7 +155,6 @@ fn default_offset() -> Option<i32> {
 /// File Tools服务
 #[derive(Debug, Clone)]
 pub struct FileBashToolsService {
-    tool_router: ToolRouter<FileBashToolsService>,
     /// 并发控制信号量，限制同时处理的文件数量
     file_semaphore: Arc<Semaphore>,
 }
@@ -167,7 +163,6 @@ impl FileBashToolsService {
     /// 创建新的服务实例
     pub fn new() -> Self {
         Self {
-            tool_router: Self::tool_router(),
             // 限制同时处理 10 个文件，防止资源耗尽
             file_semaphore: Arc::new(Semaphore::new(10)),
         }
@@ -259,7 +254,7 @@ impl FileBashToolsService {
         info!("🔍 Grep content 搜索完成: 模式='{}', 找到{}个匹配", req.pattern, total_count);
         
         Ok(CallToolResult::success(vec![
-            Content::text(format!(
+            ContentBlock::text(format!(
                 "Grep搜索结果 (content模式):\n模式: {}\n搜索路径: {}\n总匹配数: {}\n\n匹配内容:\n{}", 
                 req.pattern, 
                 search_path.display(), 
@@ -303,7 +298,7 @@ impl FileBashToolsService {
         info!("🔍 Grep files_with_matches 搜索完成: 模式='{}', 找到{}个文件", req.pattern, count);
         
         Ok(CallToolResult::success(vec![
-            Content::text(format!(
+            ContentBlock::text(format!(
                 "Grep搜索结果 (files_with_matches模式):\n模式: {}\n搜索路径: {}\n匹配文件数: {}\n\n匹配文件:\n{}", 
                 req.pattern, 
                 search_path.display(), 
@@ -351,7 +346,7 @@ impl FileBashToolsService {
         info!("🔍 Grep count 搜索完成: 模式='{}', 总计{}个匹配", req.pattern, total);
         
         Ok(CallToolResult::success(vec![
-            Content::text(format!(
+            ContentBlock::text(format!(
                 "Grep搜索结果 (count模式):\n模式: {}\n搜索路径: {}\n总匹配数: {}\n\n各文件匹配数:\n{}", 
                 req.pattern, 
                 search_path.display(), 
@@ -487,7 +482,7 @@ impl FileBashToolsService {
         info!("✅ 文件原子写入成功: {} ({} bytes)", req.file_path, bytes_written);
 
         Ok(CallToolResult::success(vec![
-            Content::text(format!("成功原子写入文件: {}，字节数: {}", req.file_path, bytes_written))
+            ContentBlock::text(format!("成功原子写入文件: {}，字节数: {}", req.file_path, bytes_written))
         ]))
     }
 
@@ -538,7 +533,7 @@ impl FileBashToolsService {
         info!("📄 文件读取成功: {} ({} lines returned)", req.file_path, slice.len());
         
         Ok(CallToolResult::success(vec![
-            Content::text(format!(
+            ContentBlock::text(format!(
                 "文件内容:\n{}\n总计行数: {}, 返回行数: {}",
                 result_content, total_lines, slice.len()
             ))
@@ -653,14 +648,14 @@ impl FileBashToolsService {
         if replacements == 0 {
             info!("⚠️ 文件内容无变化: {}", req.file_path);
             return Ok(CallToolResult::success(vec![
-                Content::text(format!("文件 '{}' 中未找到要替换的内容", req.file_path))
+                ContentBlock::text(format!("文件 '{}' 中未找到要替换的内容", req.file_path))
             ]));
         }
 
         info!("✏️ 文件原子编辑成功: {} ({} replacements)", req.file_path, replacements);
 
         Ok(CallToolResult::success(vec![
-            Content::text(format!("成功原子编辑文件: {}，替换次数: {}", req.file_path, replacements))
+            ContentBlock::text(format!("成功原子编辑文件: {}，替换次数: {}", req.file_path, replacements))
         ]))
     }
 
@@ -730,7 +725,7 @@ impl FileBashToolsService {
               req.pattern, search_path.display(), match_count);
         
         Ok(CallToolResult::success(vec![
-            Content::text(format!(
+            ContentBlock::text(format!(
                 "Glob匹配结果:\n模式: {}\n搜索路径: {}\n匹配数: {}\n\n匹配文件:\n{}", 
                 req.pattern, 
                 search_path.display(), 
@@ -825,7 +820,7 @@ impl FileBashToolsService {
               total, pending, in_progress, completed);
         
         Ok(CallToolResult::success(vec![
-            Content::text(format!(
+            ContentBlock::text(format!(
                 "TodoWrite任务列表已更新:\n\n📊 统计信息:\n• 总任务数: {}\n• 待处理: {}\n• 进行中: {}\n• 已完成: {}\n\n📋 任务列表:\n{}", 
                 total, 
                 pending, 
@@ -841,14 +836,11 @@ impl FileBashToolsService {
 #[tool_handler]
 impl ServerHandler for FileBashToolsService {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some("企业级文件操作MCP服务器。支持文件读写、编辑 (Only Windows)。".to_string()),
-        }
+        let mut info = ServerInfo::default();
+        info.protocol_version = ProtocolVersion::V_2024_11_05;
+        info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        info.instructions = Some("企业级文件操作MCP服务器。支持文件读写、编辑 (Only Windows)。".to_string());
+        info
     }
 }
 
@@ -856,7 +848,6 @@ impl ServerHandler for FileBashToolsService {
 mod tests {
     use super::*;
     use glob::glob;
-    use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn test_glob_pattern_matching() {
