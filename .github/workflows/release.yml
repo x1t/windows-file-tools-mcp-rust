@@ -1,0 +1,38 @@
+name: Release
+# 发版说明：推送 v<版本号> 格式的 tag（如 v0.1.0 / v1.2.3）时，
+# 在 windows-latest 原生 MSVC 工具链上编译出 file-bash-tools-mcp.exe，
+# 并将其作为裸 .exe 产物上传到 GitHub Release（无对应 Release 时自动补建）。
+on:
+  push:
+    tags:
+      - "v[0-9]+.*"
+
+# softprops/action-gh-release 需要写权限以创建/更新 Release 并上传资产
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build Windows x64 exe & publish to Release
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          # stable 即可覆盖仓库 edition 2021；msvc 是 windows 宿主默认 target，显式声明更清晰
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: 编译 release 二进制（锁定依赖，保证可复现）
+        run: cargo build --release --locked
+
+      - name: 上传 .exe 到 GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          # 裸 exe 直接作为资产，MCP 客户端 config 可直指该文件路径
+          files: target/release/file-bash-tools-mcp.exe
+          # 自动生成 Release 标题与说明（基于 commit 列表）
+          generate_release_notes: true

@@ -2,9 +2,7 @@
 /target/
 **/*.rs.bk
 
-# Cargo.lock（对于可执行项目）
-# 注意：如果这是库项目，请删除此行
-Cargo.lock
+# 本仓库是可执行（二进制）项目：Cargo.lock 需要提交入库以保证可复现构建，故此处不再忽略
 
 # mcp-client 测试客户端：只入库源码（src/、package.json、tsconfig、pnpm-lock），忽略其余
 mcp-client/node_modules/
